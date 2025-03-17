@@ -1,0 +1,90 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Object Detection with YOLO</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="panel">
+                <h2>Upload File</h2>
+                <div class="file-upload">
+                    <input type="file" id="file-input" accept="image/*" hidden>
+                    <button id="choose-file-btn">Choose File</button>
+                    <span id="file-name">No file chosen</span>
+                </div>
+                <div class="file-info">
+                    <p>Supported formats: JPG, PNG, MP4, AVI</p>
+                </div>
+                <button id="upload-btn" class="primary-btn">Upload</button>
+            </div>
+
+            <div class="panel">
+                <h2>Model Selection</h2>
+                <select id="model-select">
+                    <option value="YOLOv3">YOLOv3</option>
+                    <option value="YOLOv4">YOLOv4</option>
+                    <option value="YOLOv8">YOLOv8</option>
+                </select>
+            </div>
+
+            
+            <div class="panel">
+                <h2>Live Detection</h2>
+                <button onclick="window.location.href='/webcam'" class="primary-btn">Switch to Webcam</button>
+            </div>
+
+            <div class="panel">
+                <h2>Detection Settings</h2>
+                <div class="slider-container">
+                    <label for="confidence-threshold">Confidence Threshold: <span id="threshold-value">0.5</span></label>
+                    <input type="range" id="confidence-threshold" min="0.1" max="1.0" step="0.1" value="0.5">
+                </div>
+                <div class="checkbox-container">
+                    <input type="checkbox" id="show-boxes" checked>
+                    <label for="show-boxes">Show Bounding Boxes</label>
+                </div>
+                <div class="checkbox-container">
+                    <input type="checkbox" id="show-labels" checked>
+                    <label for="show-labels">Show Labels</label>
+                </div>
+                <div class="checkbox-container">
+                    <input type="checkbox" id="show-confidence" checked>
+                    <label for="show-confidence">Show Confidence</label>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Class Filters</h2>
+                <div id="class-filters">
+                    <!-- Filters will be added dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="file-preview">
+                <h2 id="file-preview-title">Image Preview</h2>
+                <div id="preview-container">
+                    <img id="preview-image" src="{{ url_for('static', filename='images/placeholder.png') }}" alt="Preview">
+                    <canvas id="detection-canvas" width="800" height="600"></canvas>
+                </div>
+            </div>
+
+            <div class="results-panel">
+                <h2>Detection Results</h2>
+                <div id="results-container">
+                    <p id="no-results">No detections yet. Upload an image to start.</p>
+                    <div id="detection-results"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

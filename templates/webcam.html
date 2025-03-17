@@ -1,0 +1,93 @@
+<!-- templates/webcam.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Object Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="panel">
+                <h2>Webcam Control</h2>
+                <button id="start-webcam" class="primary-btn">Start Webcam</button>
+                <button id="stop-webcam" class="primary-btn" style="background-color: #f44336; margin-top: 10px;">Stop Webcam</button>
+                <div class="slider-container" style="margin-top: 15px;">
+                    <label for="confidence-threshold">Confidence Threshold: <span id="threshold-value">0.5</span></label>
+                    <input type="range" id="confidence-threshold" min="0.1" max="1.0" step="0.1" value="0.5">
+                </div>
+            </div>
+            
+            <div class="panel">
+                <h2>Navigation</h2>
+                <button onclick="window.location.href='/'" class="primary-btn">Back to Image Upload</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="file-preview">
+                <h2>Live Webcam Feed</h2>
+                <div id="preview-container">
+                    <img id="webcam-feed" src="{{ url_for('video_feed') }}" alt="Webcam Feed" style="display: none;">
+                    <p id="webcam-status">Click "Start Webcam" to begin detection.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const startWebcamBtn = document.getElementById('start-webcam');
+            const stopWebcamBtn = document.getElementById('stop-webcam');
+            const confidenceThreshold = document.getElementById('confidence-threshold');
+            const thresholdValue = document.getElementById('threshold-value');
+            const webcamFeed = document.getElementById('webcam-feed');
+            const webcamStatus = document.getElementById('webcam-status');
+            
+            // Update threshold value display
+            confidenceThreshold.addEventListener('input', function() {
+                thresholdValue.textContent = this.value;
+            });
+            
+            // Start webcam
+            startWebcamBtn.addEventListener('click', function() {
+                const formData = new FormData();
+                formData.append('confidence_threshold', confidenceThreshold.value);
+                
+                fetch('/start_webcam', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        webcamFeed.style.display = 'block';
+                        webcamStatus.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            });
+            
+            // Stop webcam
+            stopWebcamBtn.addEventListener('click', function() {
+                fetch('/stop_webcam', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    webcamFeed.style.display = 'none';
+                    webcamStatus.style.display = 'block';
+                    webcamStatus.textContent = 'Webcam stopped. Click "Start Webcam" to begin again.';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
