@@ -15,6 +15,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const detectionResults = document.getElementById('detection-results');
     const noResults = document.getElementById('no-results');
     const classFilters = document.getElementById('class-filters');
+    const modelSelect = document.getElementById('model-select');
+    
+    // Store current detections
+    let currentDetections = [];
+    let classColorMap = {};
+    
+    // Load all YOLO classes
+    loadAllClasses();
     
     // File selection
     chooseFileBtn.addEventListener('click', function() {
@@ -68,7 +76,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Show loading state
         uploadBtn.disabled = true;
-        uploadBtn.textContent = 'Processing...';// Send request to server
+        uploadBtn.textContent = 'Processing...';
+        
+        // Send request to server
         fetch('/upload', {
             method: 'POST',
             body: formData
@@ -95,10 +105,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Store current detections
-    let currentDetections = [];
-    let classColorMap = {};
-    
     // Display detection results
     function displayDetectionResults(data) {
         currentDetections = data.results;
@@ -112,7 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Display object count
         const totalObjects = data.results.length;
-        detectionResults.innerHTML = `<p>Found ${totalObjects} objects:</p>`;
+        detectionResults.innerHTML = `Found ${totalObjects} objects:`;
         
         // Create list of detected objects grouped by class
         const objectList = document.createElement('ul');
@@ -127,8 +133,11 @@ document.addEventListener('DOMContentLoaded', function() {
             listItem.appendChild(document.createTextNode(`${className}: ${count}`));
             objectList.appendChild(listItem);
             
-            // Add class to filters if not already present
-            addClassToFilters(className);
+            // Update class filter state
+            const classFilter = document.getElementById(`filter-${className}`);
+            if (classFilter) {
+                classFilter.checked = true;
+            }
         });
         
         detectionResults.appendChild(objectList);
@@ -191,6 +200,100 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Load all available classes
+    function loadAllClasses() {
+        fetch('/get_classes')
+            .then(response => response.json())
+            .then(data => {
+                // Clear existing filters
+                classFilters.innerHTML = '';
+                
+                // Sort classes alphabetically for better usability
+                const sortedClasses = data.classes.sort();
+                
+                // Create a "Select All" checkbox
+                const allContainer = document.createElement('div');
+                allContainer.className = 'checkbox-container';
+                
+                const allCheckbox = document.createElement('input');
+                allCheckbox.type = 'checkbox';
+                allCheckbox.id = 'filter-all';
+                allCheckbox.checked = true;
+                
+                const allLabel = document.createElement('label');
+                allLabel.htmlFor = 'filter-all';
+                allLabel.appendChild(document.createTextNode('Select All'));
+                
+                allContainer.appendChild(allCheckbox);
+                allContainer.appendChild(allLabel);
+                classFilters.appendChild(allContainer);
+                
+                // Create a container for the class checkboxes
+                const classesContainer = document.createElement('div');
+                classesContainer.className = 'classes-container';
+                classesContainer.style.maxHeight = '200px';
+                classesContainer.style.overflowY = 'auto';
+                classesContainer.style.marginTop = '10px';
+                
+                // "Select All" checkbox functionality
+                allCheckbox.addEventListener('change', function() {
+                    const checkboxes = classesContainer.querySelectorAll('input[type="checkbox"]');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = this.checked;
+                    });
+                    redrawDetections();
+                });
+                
+                // Add class checkboxes
+                sortedClasses.forEach(className => {
+                    // Generate a random color if not already assigned
+                    if (!classColorMap[className]) {
+                        const hue = Math.random() * 360;
+                        classColorMap[className] = `hsl(${hue}, 70%, 50%)`;
+                    }
+                    
+                    const filterContainer = document.createElement('div');
+                    filterContainer.className = 'checkbox-container';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `filter-${className}`;
+                    checkbox.checked = true;
+                    checkbox.dataset.class = className;
+                    checkbox.addEventListener('change', function() {
+                        // Update "Select All" checkbox if needed
+                        const allChecked = Array.from(
+                            classesContainer.querySelectorAll('input[type="checkbox"]')
+                        ).every(cb => cb.checked);
+                        
+                        allCheckbox.checked = allChecked;
+                        redrawDetections();
+                    });
+                    
+                    const label = document.createElement('label');
+                    label.htmlFor = `filter-${className}`;
+                    
+                    const colorSwatch = document.createElement('span');
+                    colorSwatch.className = 'detection-color';
+                    colorSwatch.style.backgroundColor = classColorMap[className];
+                    
+                    label.appendChild(colorSwatch);
+                    label.appendChild(document.createTextNode(` ${className}`));
+                    
+                    filterContainer.appendChild(checkbox);
+                    filterContainer.appendChild(label);
+                    
+                    classesContainer.appendChild(filterContainer);
+                });
+                
+                classFilters.appendChild(classesContainer);
+            })
+            .catch(error => {
+                console.error('Error loading classes:', error);
+                classFilters.innerHTML = 'Error loading classes';
+            });
+    }
+    
     // Clear detection canvas
     function clearDetectionCanvas() {
         const ctx = detectionCanvas.getContext('2d');
@@ -216,37 +319,5 @@ document.addEventListener('DOMContentLoaded', function() {
                 classColorMap[className] = `hsl(${hue}, 70%, 50%)`;
             }
         });
-    }
-    
-    // Add class to filters panel
-    function addClassToFilters(className) {
-        // Check if filter already exists
-        if (document.getElementById(`filter-${className}`)) {
-            return;
-        }
-        
-        const filterContainer = document.createElement('div');
-        filterContainer.className = 'checkbox-container';
-        
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = `filter-${className}`;
-        checkbox.checked = true;
-        checkbox.addEventListener('change', redrawDetections);
-        
-        const label = document.createElement('label');
-        label.htmlFor = `filter-${className}`;
-        
-        const colorSwatch = document.createElement('span');
-        colorSwatch.className = 'detection-color';
-        colorSwatch.style.backgroundColor = classColorMap[className];
-        
-        label.appendChild(colorSwatch);
-        label.appendChild(document.createTextNode(` ${className}`));
-        
-        filterContainer.appendChild(checkbox);
-        filterContainer.appendChild(label);
-        
-        classFilters.appendChild(filterContainer);
     }
 });

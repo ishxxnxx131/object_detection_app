@@ -18,6 +18,11 @@ camera = None
 output_frame = None
 lock = threading.Lock()
 
+def get_yolo_classes():
+    with open("coco.names", "r") as f:
+        classes = [line.strip() for line in f.readlines()]
+    return classes
+
 # Load YOLO model
 def load_yolo():
     net = cv2.dnn.readNet("yolov3.weights", "yolov3.cfg")
@@ -93,7 +98,8 @@ def detect_objects(img_path, confidence_threshold=0.5):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    classes = get_yolo_classes()
+    return render_template('index.html', classes=classes)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -141,10 +147,14 @@ def generate_frames():
               bytearray(encoded_image) + b'\r\n')
 
 # function to detect objects in webcam stream
-def detect_webcam(confidence_threshold=0.5):
+def detect_webcam(confidence_threshold=0.5, class_filters=None):
     global camera, output_frame, lock
     
     net, classes, output_layers = load_yolo()
+    
+    # If no class filters provided, use all classes
+    if class_filters is None:
+        class_filters = classes
     
     # Initialize webcam
     camera = cv2.VideoCapture(0)
@@ -197,10 +207,12 @@ def detect_webcam(confidence_threshold=0.5):
                 label = str(classes[class_ids[i]])
                 confidence = confidences[i]
                 
-                # Draw rectangle and text
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(frame, f"{label} {confidence:.2f}", (x, y - 10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                # Draw only if class is in filters
+                if label in class_filters:
+                    # Draw rectangle and text
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cv2.putText(frame, f"{label} {confidence:.2f}", (x, y - 10), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
         # Update the output frame
         with lock:
@@ -228,8 +240,13 @@ def start_webcam():
     # Get confidence threshold
     confidence_threshold = float(request.form.get('confidence_threshold', 0.5))
     
+    # Get class filters (if provided)
+    class_filters = request.form.getlist('class_filters[]')
+    if not class_filters:  # If no filters, use all classes
+        class_filters = all_classes
+    
     # Start webcam detection in a separate thread
-    t = threading.Thread(target=detect_webcam, args=(confidence_threshold,))
+    t = threading.Thread(target=detect_webcam, args=(confidence_threshold, class_filters))
     t.daemon = True
     t.start()
     
@@ -243,10 +260,34 @@ def stop_webcam():
     if camera is not None:
         camera.release()
         camera = None
-    
+
     return jsonify({'status': 'success'})
 
 
+# global variable 
+all_classes = []
 
+# Add this function to load all classes at startup
+def load_all_classes():
+    global all_classes
+    try:
+        with open("coco.names", "r") as f:
+            all_classes = [line.strip() for line in f.readlines()]
+        return all_classes
+    except Exception as e:
+        print(f"Error loading classes: {e}")
+        return []
+
+# Add this route to get all classes
+@app.route('/get_classes', methods=['GET'])
+def get_classes():
+    return jsonify({'classes': all_classes})
+
+# In your main block, add this before app.run()
 if __name__ == '__main__':
+    # Load all classes at startup
+    all_classes = load_all_classes()
     app.run(debug=True)
+
+
+    

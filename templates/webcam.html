@@ -88,6 +88,112 @@
                 });
             });
         });
+
+        const classFilters = document.createElement('div');
+classFilters.id = 'class-filters';
+classFilters.style.maxHeight = '200px';
+classFilters.style.overflowY = 'auto';
+
+// Create a panel for class filters
+const filterPanel = document.createElement('div');
+filterPanel.className = 'panel';
+filterPanel.innerHTML = '<h2>Class Filters</h2>';
+filterPanel.appendChild(classFilters);
+
+// Add the filter panel to the sidebar
+document.querySelector('.sidebar').appendChild(filterPanel);
+
+// Class color map
+const classColorMap = {};
+
+// Load all YOLO classes
+fetch('/get_classes')
+    .then(response => response.json())
+    .then(data => {
+        // Sort classes alphabetically
+        const sortedClasses = data.classes.sort();
+        
+        // Create a "Select All" checkbox
+        const allContainer = document.createElement('div');
+        allContainer.className = 'checkbox-container';
+        
+        const allCheckbox = document.createElement('input');
+        allCheckbox.type = 'checkbox';
+        allCheckbox.id = 'filter-all';
+        allCheckbox.checked = true;
+        
+        const allLabel = document.createElement('label');
+        allLabel.htmlFor = 'filter-all';
+        allLabel.appendChild(document.createTextNode('Select All'));
+        
+        allContainer.appendChild(allCheckbox);
+        allContainer.appendChild(allLabel);
+        classFilters.appendChild(allContainer);
+        
+        // "Select All" checkbox functionality
+        allCheckbox.addEventListener('change', function() {
+            const checkboxes = classFilters.querySelectorAll('input[type="checkbox"]:not(#filter-all)');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+            
+            // We need to restart the webcam to apply filters
+            if (webcamFeed.style.display === 'block') {
+                // Restart webcam with current settings
+                const formData = new FormData();
+                formData.append('confidence_threshold', confidenceThreshold.value);
+                
+                fetch('/start_webcam', {
+                    method: 'POST',
+                    body: formData
+                });
+            }
+        });
+        
+        // Create a container for the class checkboxes
+        const classesContainer = document.createElement('div');
+        classesContainer.className = 'classes-container';
+        
+        // Add class checkboxes
+        sortedClasses.forEach(className => {
+            // Generate a random color
+            if (!classColorMap[className]) {
+                const hue = Math.random() * 360;
+                classColorMap[className] = `hsl(${hue}, 70%, 50%)`;
+            }
+            
+            const filterContainer = document.createElement('div');
+            filterContainer.className = 'checkbox-container';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `filter-${className}`;
+            checkbox.checked = true;
+            checkbox.dataset.class = className;
+            
+            const label = document.createElement('label');
+            label.htmlFor = `filter-${className}`;
+            
+            const colorSwatch = document.createElement('span');
+            colorSwatch.className = 'detection-color';
+            colorSwatch.style.backgroundColor = classColorMap[className];
+            
+            label.appendChild(colorSwatch);
+            label.appendChild(document.createTextNode(` ${className}`));
+            
+            filterContainer.appendChild(checkbox);
+            filterContainer.appendChild(label);
+            
+            classesContainer.appendChild(filterContainer);
+        });
+        
+        classFilters.appendChild(classesContainer);
+    })
+    .catch(error => {
+        console.error('Error loading classes:', error);
+        classFilters.innerHTML = '<p>Error loading classes</p>';
+    });
+    
     </script>
 </body>
 </html>
