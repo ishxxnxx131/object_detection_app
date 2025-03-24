@@ -4,23 +4,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Object Detection with YOLO</title>
+    <title>Water Leak Detection</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
         <div class="sidebar">
             <div class="panel">
-                <h2>Upload File</h2>
-                <div class="file-upload">
-                    <input type="file" id="file-input" accept="image/*" hidden>
-                    <button id="choose-file-btn">Choose File</button>
-                    <span id="file-name">No file chosen</span>
+                <h2>Source</h2>
+                <select id="source-select" class="source-dropdown">
+                    <option value="" disabled selected>Select Source</option>
+                    <option value="local">Local Repository</option>
+                    <option value="upload">Upload File</option>
+                    <option value="webcam">Web Camera</option>
+                </select>
+                
+                <div id="file-upload-container" class="hidden">
+                    <div class="file-upload">
+                        <input type="file" id="file-input" accept="image/*,video/*" hidden>
+                        <button id="choose-file-btn">Choose File</button>
+                        <span id="file-name">No file chosen</span>
+                    </div>
+                    <button id="upload-btn" class="primary-btn">Upload</button>
                 </div>
-                <div class="file-info">
-                    <p>Supported formats: JPG, PNG, MP4, AVI</p>
+            </div>
+
+            <div class="panel">
+                <div class="navigation-controls">
+                    <button id="first-frame" class="nav-btn">«</button>
+                    <button id="prev-frame" class="nav-btn">‹</button>
+                    <span id="frame-counter">1 / 0</span>
+                    <button id="next-frame" class="nav-btn">›</button>
+                    <button id="last-frame" class="nav-btn">»</button>
+                    <button id="play-btn" class="play-btn">▶</button>
                 </div>
-                <button id="upload-btn" class="primary-btn">Upload</button>
+                <div class="current-file">
+                    <span>Current file: No file selected</span>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Analysis Logs</h2>
+                <div id="analysis-logs" class="analysis-logs">
+                    <!-- Analysis logs will be displayed here -->
+                </div>
             </div>
 
             <div class="panel">
@@ -30,12 +57,6 @@
                     <option value="YOLOv4">YOLOv4</option>
                     <option value="YOLOv8">YOLOv8</option>
                 </select>
-            </div>
-
-            
-            <div class="panel">
-                <h2>Live Detection</h2>
-                <button onclick="window.location.href='/webcam'" class="primary-btn">Switch to Webcam</button>
             </div>
 
             <div class="panel">
@@ -68,18 +89,22 @@
 
         <div class="main-content">
             <div class="file-preview">
-                <h2 id="file-preview-title">Image Preview</h2>
+                <h2 id="file-preview-title">Preview</h2>
                 <div id="preview-container">
-                    <img id="preview-image" src="{{ url_for('static', filename='images/placeholder.png') }}" alt="Preview">
+                    <div id="loading-indicator" class="loading-indicator">
+                        <div class="hourglass-icon"></div>
+                        <p>Connecting to Source...</p>
+                    </div>
+                    <img id="preview-image" class="hidden" src="{{ url_for('static', filename='images/placeholder.png') }}" alt="Preview">
+                    <video id="preview-video" class="hidden" controls></video>
                     <canvas id="detection-canvas" width="800" height="600"></canvas>
                 </div>
             </div>
 
             <div class="results-panel">
-                <h2>Detection Results</h2>
-                <div id="results-container">
-                    <p id="no-results">No detections yet. Upload an image to start.</p>
-                    <div id="detection-results"></div>
+                <h2>Current Analysis</h2>
+                <div id="current-analysis-container">
+                    <!-- Current analysis will be displayed here -->
                 </div>
             </div>
         </div>

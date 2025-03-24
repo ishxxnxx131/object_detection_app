@@ -1,42 +1,61 @@
 # app.py
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import os
 import cv2
 import numpy as np
 from werkzeug.utils import secure_filename
-from flask import Response
 import threading
 import time
-
+import json
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# Global variables for webcam
 camera = None
 output_frame = None
 lock = threading.Lock()
 
-def get_yolo_classes():
-    with open("coco.names", "r") as f:
-        classes = [line.strip() for line in f.readlines()]
-    return classes
+# Global variable for classes
+all_classes = []
+
+# Load all classes at startup
+def load_all_classes():
+    global all_classes
+    try:
+        with open("coco.names", "r") as f:
+            all_classes = [line.strip() for line in f.readlines()]
+        return all_classes
+    except Exception as e:
+        print(f"Error loading classes: {e}")
+        return []
 
 # Load YOLO model
-def load_yolo():
-    net = cv2.dnn.readNet("yolov3.weights", "yolov3.cfg")
+def load_yolo(model="YOLOv3"):
+    if model == "YOLOv3":
+        weights = "yolov3.weights"
+        config = "yolov3.cfg"
+    elif model == "YOLOv4":
+        weights = "yolov4.weights"
+        config = "yolov4.cfg"
+    elif model == "YOLOv8":
+        weights = "yolov8.weights"
+        config = "yolov8.cfg"
+    else:
+        weights = "yolov3.weights"
+        config = "yolov3.cfg"
+    
+    net = cv2.dnn.readNet(weights, config)
     layer_names = net.getLayerNames()
     output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers().flatten()]
     
-    with open("coco.names", "r") as f:
-        classes = [line.strip() for line in f.readlines()]
-    
-    return net, classes, output_layers
+    return net, all_classes, output_layers
 
 # Detect objects in image
-def detect_objects(img_path, confidence_threshold=0.5):
-    net, classes, output_layers = load_yolo()
+def detect_objects(img_path, confidence_threshold=0.5, model="YOLOv3"):
+    net, classes, output_layers = load_yolo(model)
     
     # Load image
     img = cv2.imread(img_path)
@@ -96,64 +115,14 @@ def detect_objects(img_path, confidence_threshold=0.5):
     
     return results, class_counts
 
-@app.route('/')
-def index():
-    classes = get_yolo_classes()
-    return render_template('index.html', classes=classes)
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'})
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'})
-    
-    if file:
-        # Save the uploaded file
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        
-        # Get confidence threshold
-        confidence_threshold = float(request.form.get('confidence_threshold', 0.5))
-        
-        # Process the image
-        results, class_counts = detect_objects(file_path, confidence_threshold)
-        
-        return jsonify({
-            'filename': filename,
-            'results': results,
-            'class_counts': class_counts
-        })
-
-# Add this function to handle webcam video stream
-def generate_frames():
-    global output_frame, camera
-    
-    while True:
-        with lock:
-            if output_frame is None:
-                continue
-            
-            # Encode the frame as JPEG
-            (flag, encoded_image) = cv2.imencode(".jpg", output_frame)
-            if not flag:
-                continue
-            
-        # Yield the output frame in the byte format
-        yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + 
-              bytearray(encoded_image) + b'\r\n')
-
-# function to detect objects in webcam stream
-def detect_webcam(confidence_threshold=0.5, class_filters=None):
+# Function to detect objects in webcam stream
+def detect_webcam(confidence_threshold=0.5, class_filters=None, model="YOLOv3"):
     global camera, output_frame, lock
     
-    net, classes, output_layers = load_yolo()
+    net, classes, output_layers = load_yolo(model)
     
     # If no class filters provided, use all classes
-    if class_filters is None:
+    if class_filters is None or len(class_filters) == 0:
         class_filters = classes
     
     # Initialize webcam
@@ -209,16 +178,88 @@ def detect_webcam(confidence_threshold=0.5, class_filters=None):
                 
                 # Draw only if class is in filters
                 if label in class_filters:
+                    # Generate a consistent color based on class
+                    color = get_color_for_class(label)
+                    
                     # Draw rectangle and text
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
                     cv2.putText(frame, f"{label} {confidence:.2f}", (x, y - 10), 
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         
         # Update the output frame
         with lock:
             output_frame = frame.copy()
 
-# Add these routes to app.py
+# Function to generate video frames for streaming
+def generate_frames():
+    global output_frame, camera
+    
+    while True:
+        with lock:
+            if output_frame is None:
+                continue
+            
+            # Encode the frame as JPEG
+            (flag, encoded_image) = cv2.imencode(".jpg", output_frame)
+            if not flag:
+                continue
+            
+        # Yield the output frame in the byte format
+        yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + 
+              bytearray(encoded_image) + b'\r\n')
+
+# Function to generate consistent colors for classes
+def get_color_for_class(class_name):
+    # Simple hash function to generate consistent colors
+    hash_val = sum(ord(c) for c in class_name)
+    hue = hash_val % 360
+    # Convert HSV to BGR (what OpenCV uses)
+    h = hue / 360.0
+    rgb = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(h, 0.7, 0.9))
+    # OpenCV uses BGR
+    return (rgb[2], rgb[1], rgb[0])
+
+# Import colorsys for color conversion
+import colorsys
+
+# Routes
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'})
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'})
+    
+    if file:
+        # Save the uploaded file
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        
+        # Get confidence threshold and model
+        confidence_threshold = float(request.form.get('confidence_threshold', 0.5))
+        model = request.form.get('model', 'YOLOv3')
+        
+        # Process the image
+        results, class_counts = detect_objects(file_path, confidence_threshold, model)
+        
+        return jsonify({
+            'filename': filename,
+            'results': results,
+            'class_counts': class_counts
+        })
+
+@app.route('/get_classes', methods=['GET'])
+def get_classes():
+    return jsonify({'classes': all_classes})
+
 @app.route('/webcam')
 def webcam():
     return render_template('webcam.html')
@@ -237,16 +278,20 @@ def start_webcam():
         camera.release()
         camera = None
     
+    # Get parameters from request
+    data = request.get_json() if request.is_json else request.form
+    
     # Get confidence threshold
-    confidence_threshold = float(request.form.get('confidence_threshold', 0.5))
+    confidence_threshold = float(data.get('confidence_threshold', 0.5))
+    
+    # Get model selection
+    model = data.get('model', 'YOLOv3')
     
     # Get class filters (if provided)
-    class_filters = request.form.getlist('class_filters[]')
-    if not class_filters:  # If no filters, use all classes
-        class_filters = all_classes
+    class_filters = data.getlist('class_filters[]') if hasattr(data, 'getlist') else data.get('class_filters', [])
     
     # Start webcam detection in a separate thread
-    t = threading.Thread(target=detect_webcam, args=(confidence_threshold, class_filters))
+    t = threading.Thread(target=detect_webcam, args=(confidence_threshold, class_filters, model))
     t.daemon = True
     t.start()
     
@@ -263,31 +308,50 @@ def stop_webcam():
 
     return jsonify({'status': 'success'})
 
+@app.route('/local_repository', methods=['GET'])
+def local_repository():
+    # Get list of files in the local repository (uploads folder)
+    files = []
+    for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+        if os.path.isfile(os.path.join(app.config['UPLOAD_FOLDER'], filename)):
+            # Check if it's an image or video
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.mp4', '.avi', '.mov')):
+                files.append({
+                    'name': filename,
+                    'path': os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                })
+    
+    return jsonify({'files': files})
 
-# global variable 
-all_classes = []
+@app.route('/analyze_file', methods=['POST'])
+def analyze_file():
+    data = request.get_json()
+    
+    # Get file path, confidence threshold, and model
+    file_path = data.get('file_path')
+    confidence_threshold = float(data.get('confidence_threshold', 0.5))
+    model = data.get('model', 'YOLOv3')
+    
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'})
+    
+    # Process the file
+    results, class_counts = detect_objects(file_path, confidence_threshold, model)
+    
+    return jsonify({
+        'filename': os.path.basename(file_path),
+        'results': results,
+        'class_counts': class_counts
+    })
 
-# Add this function to load all classes at startup
-def load_all_classes():
-    global all_classes
-    try:
-        with open("coco.names", "r") as f:
-            all_classes = [line.strip() for line in f.readlines()]
-        return all_classes
-    except Exception as e:
-        print(f"Error loading classes: {e}")
-        return []
+# Handle cleanup when the application shuts down
+@app.teardown_appcontext
+def teardown_app(exception=None):
+    global camera
+    if camera is not None:
+        camera.release()
 
-# Add this route to get all classes
-@app.route('/get_classes', methods=['GET'])
-def get_classes():
-    return jsonify({'classes': all_classes})
-
-# In your main block, add this before app.run()
 if __name__ == '__main__':
     # Load all classes at startup
     all_classes = load_all_classes()
     app.run(debug=True)
-
-
-    

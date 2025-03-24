@@ -7,7 +7,8 @@
 }
 
 body {
-    background-color: #f0f2f5;
+    background-color: #081033;
+    color: #fff;
 }
 
 .container {
@@ -16,8 +17,8 @@ body {
 }
 
 .sidebar {
-    width: 320px;
-    background-color: #3f51b5;
+    width: 260px;
+    background-color: #3040bc;
     color: white;
     padding: 10px;
     overflow-y: auto;
@@ -27,6 +28,7 @@ body {
     flex: 1;
     padding: 20px;
     overflow-y: auto;
+    background-color: #081033;
 }
 
 .panel {
@@ -39,6 +41,16 @@ body {
 h2 {
     margin-bottom: 15px;
     font-size: 20px;
+}
+
+.source-dropdown {
+    width: 100%;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    margin-bottom: 10px;
+    background-color: white;
+    color: #333;
 }
 
 .file-upload {
@@ -54,6 +66,47 @@ button {
     border-radius: 5px;
     cursor: pointer;
     font-size: 14px;
+    color: #333;
+}
+
+.nav-btn {
+    background-color: transparent;
+    color: white;
+    font-size: 16px;
+    padding: 5px 10px;
+    margin: 0 2px;
+}
+
+.play-btn {
+    background-color: white;
+    color: #3040bc;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    margin-left: 10px;
+}
+
+.navigation-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+#frame-counter {
+    margin: 0 10px;
+    font-size: 14px;
+}
+
+.current-file {
+    text-align: center;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
 }
 
 #file-name {
@@ -63,12 +116,6 @@ button {
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 150px;
-}
-
-.file-info {
-    font-size: 12px;
-    margin-bottom: 15px;
-    opacity: 0.8;
 }
 
 .primary-btn {
@@ -114,20 +161,24 @@ input[type="range"] {
 }
 
 .file-preview {
-    background-color: white;
+    background-color: #182047;
     border-radius: 10px;
     padding: 20px;
     margin-bottom: 20px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
 #preview-container {
     position: relative;
     margin-top: 15px;
     text-align: center;
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-#preview-image {
+#preview-image, #preview-video {
     max-width: 100%;
     max-height: 600px;
     border-radius: 5px;
@@ -143,23 +194,20 @@ input[type="range"] {
 }
 
 .results-panel {
-    background-color: white;
+    background-color: #182047;
     border-radius: 10px;
     padding: 20px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
 
-#detection-results {
-    margin-top: 10px;
-}
-
-#detection-results ul {
-    list-style-type: none;
-    padding-left: 20px;
-}
-
-#detection-results li {
-    margin-bottom: 5px;
+.analysis-logs {
+    height: 140px;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.4;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    padding: 10px;
 }
 
 .detection-item {
@@ -175,3 +223,52 @@ input[type="range"] {
     margin-right: 8px;
 }
 
+.loading-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.hourglass-icon {
+    width: 60px;
+    height: 60px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-4-.01-.01H18V2H6zm2 2h8v2.5l-.01-.01L12 10l-4-4-.01.01V4zm8 14H8v-2.5l.01.01L12 12l4 4 .01-.01V18z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    margin-bottom: 10px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* For scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+/* Classes for the class filter list */
+.classes-container {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 10px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    padding: 5px;
+}
