@@ -1,4 +1,3 @@
-# app.py
 from flask import Flask, render_template, request, jsonify, Response
 import os
 import cv2
@@ -7,10 +6,11 @@ from werkzeug.utils import secure_filename
 import threading
 import time
 import json
+import colorsys
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max upload
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Global variables for webcam
@@ -53,16 +53,12 @@ def load_yolo(model="YOLOv3"):
     
     return net, all_classes, output_layers
 
-# Detect objects in image
-def detect_objects(img_path, confidence_threshold=0.5, model="YOLOv3"):
-    net, classes, output_layers = load_yolo(model)
-    
-    # Load image
-    img = cv2.imread(img_path)
-    height, width, channels = img.shape
+# Process a single frame
+def process_frame(frame, net, classes, output_layers, confidence_threshold=0.5):
+    height, width, channels = frame.shape
     
     # Preprocess image for YOLO
-    blob = cv2.dnn.blobFromImage(img, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
+    blob = cv2.dnn.blobFromImage(frame, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
     net.setInput(blob)
     outs = net.forward(output_layers)
     
@@ -104,6 +100,34 @@ def detect_objects(img_path, confidence_threshold=0.5, model="YOLOv3"):
                 'box': boxes[i]
             })
     
+    return results
+
+# Check if file is a video
+def is_video_file(file_path):
+    video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv']
+    ext = os.path.splitext(file_path)[1].lower()
+    return ext in video_extensions
+
+# Detect objects in image or video
+def detect_objects(file_path, confidence_threshold=0.5, model="YOLOv3"):
+    net, classes, output_layers = load_yolo(model)
+    
+    # Check if file is a video
+    if is_video_file(file_path):
+        return process_video(file_path, net, classes, output_layers, confidence_threshold)
+    else:
+        return process_image(file_path, net, classes, output_layers, confidence_threshold)
+
+# Process image file
+def process_image(img_path, net, classes, output_layers, confidence_threshold=0.5):
+    # Load image
+    img = cv2.imread(img_path)
+    if img is None:
+        raise ValueError(f"Could not load image from {img_path}")
+    
+    # Process the frame
+    results = process_frame(img, net, classes, output_layers, confidence_threshold)
+    
     # Count occurrences of each class
     class_counts = {}
     for result in results:
@@ -114,6 +138,44 @@ def detect_objects(img_path, confidence_threshold=0.5, model="YOLOv3"):
             class_counts[class_name] = 1
     
     return results, class_counts
+
+# Process video file
+def process_video(video_path, net, classes, output_layers, confidence_threshold=0.5):
+    # Open video file
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file: {video_path}")
+    
+    all_results = []
+    frame_count = 0
+    sample_interval = 10  # Process every 10th frame
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # Only process every sample_interval frames
+        if frame_count % sample_interval == 0:
+            # Process the frame
+            results = process_frame(frame, net, classes, output_layers, confidence_threshold)
+            all_results.extend(results)
+        
+        frame_count += 1
+    
+    # Release video capture
+    cap.release()
+    
+    # Count occurrences of each class across all processed frames
+    class_counts = {}
+    for result in all_results:
+        class_name = result['class']
+        if class_name in class_counts:
+            class_counts[class_name] += 1
+        else:
+            class_counts[class_name] = 1
+    
+    return all_results, class_counts
 
 # Function to detect objects in webcam stream
 def detect_webcam(confidence_threshold=0.5, class_filters=None, model="YOLOv3"):
@@ -219,9 +281,6 @@ def get_color_for_class(class_name):
     # OpenCV uses BGR
     return (rgb[2], rgb[1], rgb[0])
 
-# Import colorsys for color conversion
-import colorsys
-
 # Routes
 
 @app.route('/')
@@ -238,23 +297,27 @@ def upload_file():
         return jsonify({'error': 'No selected file'})
     
     if file:
-        # Save the uploaded file
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        
-        # Get confidence threshold and model
-        confidence_threshold = float(request.form.get('confidence_threshold', 0.5))
-        model = request.form.get('model', 'YOLOv3')
-        
-        # Process the image
-        results, class_counts = detect_objects(file_path, confidence_threshold, model)
-        
-        return jsonify({
-            'filename': filename,
-            'results': results,
-            'class_counts': class_counts
-        })
+        try:
+            # Save the uploaded file
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            
+            # Get confidence threshold and model
+            confidence_threshold = float(request.form.get('confidence_threshold', 0.5))
+            model = request.form.get('model', 'YOLOv3')
+            
+            # Process the file (image or video)
+            results, class_counts = detect_objects(file_path, confidence_threshold, model)
+            
+            return jsonify({
+                'filename': filename,
+                'results': results,
+                'class_counts': class_counts,
+                'is_video': is_video_file(file_path)
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 @app.route('/get_classes', methods=['GET'])
 def get_classes():
@@ -318,7 +381,8 @@ def local_repository():
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.mp4', '.avi', '.mov')):
                 files.append({
                     'name': filename,
-                    'path': os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    'path': os.path.join(app.config['UPLOAD_FOLDER'], filename),
+                    'is_video': is_video_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 })
     
     return jsonify({'files': files})
@@ -335,14 +399,18 @@ def analyze_file():
     if not file_path or not os.path.exists(file_path):
         return jsonify({'error': 'File not found'})
     
-    # Process the file
-    results, class_counts = detect_objects(file_path, confidence_threshold, model)
-    
-    return jsonify({
-        'filename': os.path.basename(file_path),
-        'results': results,
-        'class_counts': class_counts
-    })
+    try:
+        # Process the file
+        results, class_counts = detect_objects(file_path, confidence_threshold, model)
+        
+        return jsonify({
+            'filename': os.path.basename(file_path),
+            'results': results,
+            'class_counts': class_counts,
+            'is_video': is_video_file(file_path)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # Handle cleanup when the application shuts down
 @app.teardown_appcontext
