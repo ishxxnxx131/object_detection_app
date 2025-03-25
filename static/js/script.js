@@ -130,161 +130,190 @@ document.addEventListener('DOMContentLoaded', function() {
     lastFrameBtn.addEventListener('click', goToLastFrame);
     
     // Upload and detect
-    uploadBtn.addEventListener('click', function() {
-        if (!fileInput.files || !fileInput.files[0]) {
-            alert('Please select a file first');
+    // Upload button event listener with improved reset mechanism
+uploadBtn.addEventListener('click', function() {
+    if (!fileInput.files || !fileInput.files[0]) {
+        alert('Please select a file first');
+        return;
+    }
+    
+    // Clear previous state
+    currentDetections = []; // Reset detections
+    classColorMap = {}; // Reset color map
+    analysisLogs.innerHTML = ''; // Clear analysis logs
+    clearDetectionCanvas(); // Clear detection canvas
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('confidence_threshold', confidenceThreshold.value);
+    formData.append('model', modelSelect.value); // Add model selection
+    
+    // Show loading state
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Processing...';
+    loadingIndicator.classList.remove('hidden');
+    
+    // Send request to server
+    fetch('/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Reset button state
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload';
+        loadingIndicator.classList.add('hidden');
+        
+        if (data.error) {
+            alert('Error: ' + data.error);
             return;
         }
         
-        const formData = new FormData();
-        formData.append('file', fileInput.files[0]);
-        formData.append('confidence_threshold', confidenceThreshold.value);
+        // Display results
+        displayDetectionResults(data);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred during processing');
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload';
+        loadingIndicator.classList.add('hidden');
+    });
+});
+
+    // Display detection results
+// Display detection results
+function displayDetectionResults(data) {
+    // RESET currentDetections completely
+    currentDetections = [];
+    currentDetections = data.results;
+    
+    // Clear any previous analysis logs
+    analysisLogs.innerHTML = '';
+    
+    // Generate class color map if needed
+    generateClassColors(data.results);
+    
+    // Display object count in analysis logs
+    const totalObjects = data.results.length;
+    const resultLog = document.createElement('div');
+    resultLog.innerHTML = `<strong>Detection Results:</strong> Found ${totalObjects} objects`;
+    
+    // Create list of detected objects grouped by class
+    const objectList = document.createElement('ul');
+    objectList.style.paddingLeft = '15px';
+    
+    // Get class counts from server response
+    Object.entries(data.class_counts).forEach(([className, count]) => {
+        const listItem = document.createElement('li');
+        const colorSwatch = document.createElement('span');
+        colorSwatch.className = 'detection-color';
+        colorSwatch.style.backgroundColor = classColorMap[className];
         
-        // Show loading state
-        uploadBtn.disabled = true;
-        uploadBtn.textContent = 'Processing...';
+        listItem.appendChild(colorSwatch);
+        listItem.appendChild(document.createTextNode(`${className}: ${count}`));
+        objectList.appendChild(listItem);
         
-        // Send request to server
-        fetch('/upload', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Reset button state
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = 'Upload';
-            
-            if (data.error) {
-                alert('Error: ' + data.error);
-                return;
-            }
-            
-            // Display results
-            displayDetectionResults(data);
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('An error occurred during processing');
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = 'Upload';
-        });
+        // Update class filter state
+        const classFilter = document.getElementById(`filter-${className}`);
+        if (classFilter) {
+            classFilter.checked = true;
+        }
     });
     
-    // Display detection results
-    function displayDetectionResults(data) {
-        currentDetections = data.results;
-        
-        // Generate class color map if needed
-        generateClassColors(data.results);
-        
-        // Display object count in analysis logs
-        const totalObjects = data.results.length;
-        const resultLog = document.createElement('div');
-        resultLog.innerHTML = `<strong>Detection Results:</strong> Found ${totalObjects} objects`;
-        
-        // Create list of detected objects grouped by class
-        const objectList = document.createElement('ul');
-        objectList.style.paddingLeft = '15px';
-        
-        Object.entries(data.class_counts).forEach(([className, count]) => {
-            const listItem = document.createElement('li');
-            const colorSwatch = document.createElement('span');
-            colorSwatch.className = 'detection-color';
-            colorSwatch.style.backgroundColor = classColorMap[className];
-            
-            listItem.appendChild(colorSwatch);
-            listItem.appendChild(document.createTextNode(`${className}: ${count}`));
-            objectList.appendChild(listItem);
-            
-            // Update class filter state
-            const classFilter = document.getElementById(`filter-${className}`);
-            if (classFilter) {
-                classFilter.checked = true;
-            }
-        });
-        
-        resultLog.appendChild(objectList);
-        analysisLogs.appendChild(resultLog);
-        
-        // Auto-scroll to bottom
-        analysisLogs.scrollTop = analysisLogs.scrollHeight;
-        
-        // Draw detections on canvas
-        drawDetections();
-    }
+    resultLog.appendChild(objectList);
+    analysisLogs.appendChild(resultLog);
+    
+    // Auto-scroll to bottom
+    analysisLogs.scrollTop = analysisLogs.scrollHeight;
+    
+    // Clear any previous detections on canvas
+    clearDetectionCanvas();
+    
+    // Draw new detections on canvas
+    drawDetections();
+}
+
     
     // Draw bounding boxes and labels on canvas
-    function drawDetections() {
-        clearDetectionCanvas();
+// Ensure drawDetections function properly handles empty detections
+function drawDetections() {
+    // Clear canvas first
+    clearDetectionCanvas();
+    
+    if (!showBoxes.checked && !showLabels.checked) {
+        return;
+    }
+    
+    // Check if there are any detections
+    if (currentDetections.length === 0) {
+        return;
+    }
+    
+    const ctx = detectionCanvas.getContext('2d');
+    
+    // Use different dimensions based on whether we're displaying an image or video
+    let displayElement;
+    if (!previewImage.classList.contains('hidden')) {
+        displayElement = previewImage;
+    } else if (!previewVideo.classList.contains('hidden')) {
+        displayElement = previewVideo;
+    } else {
+        return; // Nothing to draw on
+    }
+    
+    // Adjust canvas size to match displayed element
+    detectionCanvas.width = displayElement.offsetWidth;
+    detectionCanvas.height = displayElement.offsetHeight;
+    
+    // Calculate scale factors if the original dimensions and display dimensions differ
+    const scaleX = detectionCanvas.width / displayElement.naturalWidth || 1;
+    const scaleY = detectionCanvas.height / displayElement.naturalHeight || 1;
+    
+    currentDetections.forEach(detection => {
+        const [x, y, w, h] = detection.box;
+        const className = detection.class;
+        const confidence = detection.confidence;
         
-        if (!showBoxes.checked && !showLabels.checked) {
+        // Check if class is filtered
+        const classFilter = document.getElementById(`filter-${className}`);
+        if (classFilter && !classFilter.checked) {
             return;
         }
         
-        const ctx = detectionCanvas.getContext('2d');
+        const color = classColorMap[className];
         
-        // Use different dimensions based on whether we're displaying an image or video
-        let displayElement;
-        if (!previewImage.classList.contains('hidden')) {
-            displayElement = previewImage;
-        } else if (!previewVideo.classList.contains('hidden')) {
-            displayElement = previewVideo;
-        } else {
-            return; // Nothing to draw on
+        // Scale coordinates to match current display size
+        const scaledX = x * scaleX;
+        const scaledY = y * scaleY;
+        const scaledW = w * scaleX;
+        const scaledH = h * scaleY;
+        
+        // Draw bounding box
+        if (showBoxes.checked) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(scaledX, scaledY, scaledW, scaledH);
         }
         
-        // Adjust canvas size to match displayed element
-        detectionCanvas.width = displayElement.offsetWidth;
-        detectionCanvas.height = displayElement.offsetHeight;
-        
-        // Calculate scale factors if the original dimensions and display dimensions differ
-        const scaleX = detectionCanvas.width / displayElement.naturalWidth || 1;
-        const scaleY = detectionCanvas.height / displayElement.naturalHeight || 1;
-        
-        currentDetections.forEach(detection => {
-            const [x, y, w, h] = detection.box;
-            const className = detection.class;
-            const confidence = detection.confidence;
+        // Draw label
+        if (showLabels.checked) {
+            const label = showConfidence.checked 
+                ? `${className} (${confidence})` 
+                : className;
             
-            // Check if class is filtered
-            const classFilter = document.getElementById(`filter-${className}`);
-            if (classFilter && !classFilter.checked) {
-                return;
-            }
+            ctx.font = '14px Arial';
+            const textWidth = ctx.measureText(label).width;
             
-            const color = classColorMap[className];
+            ctx.fillStyle = color;
+            ctx.fillRect(scaledX, scaledY - 20, textWidth + 10, 20);
             
-            // Scale coordinates to match current display size
-            const scaledX = x * scaleX;
-            const scaledY = y * scaleY;
-            const scaledW = w * scaleX;
-            const scaledH = h * scaleY;
-            
-            // Draw bounding box
-            if (showBoxes.checked) {
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 2;
-                ctx.strokeRect(scaledX, scaledY, scaledW, scaledH);
-            }
-            
-            // Draw label
-            if (showLabels.checked) {
-                const label = showConfidence.checked 
-                    ? `${className} (${confidence})` 
-                    : className;
-                
-                ctx.font = '14px Arial';
-                const textWidth = ctx.measureText(label).width;
-                
-                ctx.fillStyle = color;
-                ctx.fillRect(scaledX, scaledY - 20, textWidth + 10, 20);
-                
-                ctx.fillStyle = 'white';
-                ctx.fillText(label, scaledX + 5, scaledY - 5);
-            }
-        });
-    }
+            ctx.fillStyle = 'white';
+            ctx.fillText(label, scaledX + 5, scaledY - 5);
+        }
+    });
+}
     
     // Load all available classes
     function loadAllClasses() {
